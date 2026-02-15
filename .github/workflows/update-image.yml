@@ -1,0 +1,62 @@
+name: Update Docker Image
+
+on:
+  schedule:
+    - cron: '0 */4 * * *'  # Every 4 hours
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Get latest release
+        id: release
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { data } = await github.rest.repos.getLatestRelease({
+              owner: 'anomalyco',
+              repo: 'opencode'
+            });
+            const tag = data.tag_name;
+            const version = tag.startsWith('v') ? tag.slice(1) : tag;
+            core.setOutput('version', version);
+
+      - name: Get current image versions
+        id: current
+        run: |
+          TAGS=$(gh api /users/pilinux/packages/container/opencode/versions --jq '.[].metadata.container.tags[]' 2>/dev/null | sort -V | tail -1 || echo "")
+          echo "current_version=$TAGS" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compare versions
+        id: compare
+        run: |
+          RELEASE_VERSION="${{ steps.release.outputs.version }}"
+          CURRENT_VERSION="${{ steps.current.outputs.current_version }}"
+          if [ -z "$CURRENT_VERSION" ] || [ "$(printf '%s\n' "$RELEASE_VERSION" "$CURRENT_VERSION" | sort -V | head -n1)" != "$RELEASE_VERSION" ]; then
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+          else
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Login to GitHub Container Registry
+        if: steps.compare.outputs.needs_update == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        if: steps.compare.outputs.needs_update == 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ghcr.io/pilinux/opencode:${{ steps.release.outputs.version }}
