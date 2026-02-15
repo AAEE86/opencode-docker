@@ -1,0 +1,23 @@
+name: dev
+services:
+  opencode:
+    image: ghcr.io/pilinux/opencode:1.2.5
+    container_name: opencode
+
+    # listen on all interfaces INSIDE the container
+    command: opencode serve --hostname 0.0.0.0 --port 4096
+
+    ports:
+      - "172.17.0.1:4096:4096"
+
+    volumes:
+      - ./data/share:/home/opencode/.local/share/opencode
+      - ./data/state:/home/opencode/.local/state/opencode
+      - ./data/config:/home/opencode/.config/opencode
+
+    environment:
+      - TZ=${TZ}
+      - OPENCODE_SERVER_USERNAME=${OPENCODE_SERVER_USERNAME}
+      - OPENCODE_SERVER_PASSWORD=${OPENCODE_SERVER_PASSWORD}
+
+    restart: unless-stopped
