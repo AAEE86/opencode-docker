@@ -6,8 +6,11 @@ on:
   workflow_dispatch:  # Allow manual trigger
 
 jobs:
-  check-and-build:
+  check:
     runs-on: ubuntu-latest
+    outputs:
+      needs_update: ${{ steps.compare.outputs.needs_update }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -44,19 +47,101 @@ jobs:
             echo "needs_update=false" >> $GITHUB_OUTPUT
           fi
 
+  build:
+    needs: check
+    if: needs.check.outputs.needs_update == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+    runs-on: ${{ matrix.platform == 'linux/amd64' && 'ubuntu-latest' || matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Prepare
+        id: prepare
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+          echo "platform_pair=${platform//\//-}" >> $GITHUB_OUTPUT
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/pilinux/opencode
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to GitHub Container Registry
-        if: steps.compare.outputs.needs_update == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker image
-        if: steps.compare.outputs.needs_update == 'true'
+      - name: Build and push by digest
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/pilinux/opencode:${{ steps.release.outputs.version }}
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=ghcr.io/pilinux/opencode,push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v6
+        with:
+          name: digests-${{ steps.prepare.outputs.platform_pair }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: [check, build]
+    if: needs.check.outputs.needs_update == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v7
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create manifest list and push
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            -t ghcr.io/pilinux/opencode:${{ needs.check.outputs.version }} \
+            $(printf 'ghcr.io/pilinux/opencode@sha256:%s ' *)
+
+      - name: Inspect image
+        run: |
+          docker buildx imagetools inspect ghcr.io/pilinux/opencode:${{ needs.check.outputs.version }}

@@ -3,6 +3,9 @@ FROM node:24.13.1-bookworm
 # set working directory
 WORKDIR /app
 
+# check architecture
+RUN uname -m
+
 # install opencode globally
 RUN npm i -g opencode-ai&& \
   echo "Installed opencode version: $(opencode --version)"
