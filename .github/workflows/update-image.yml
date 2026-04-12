@@ -140,6 +140,7 @@ jobs:
         run: |
           docker buildx imagetools create \
             -t ghcr.io/pilinux/opencode:${{ needs.check.outputs.version }} \
+            -t ghcr.io/pilinux/opencode:latest \
             $(printf 'ghcr.io/pilinux/opencode@sha256:%s ' *)
 
       - name: Inspect image

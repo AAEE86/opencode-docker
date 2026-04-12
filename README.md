@@ -4,7 +4,7 @@ This repository provides a Docker image for running [OpenCode](https://github.co
 The image is automatically built and updated via GitHub Actions whenever a new release of OpenCode is published.
 
 Published images are available on GitHub Container Registry at `ghcr.io/pilinux/opencode`,
-tagged with the corresponding OpenCode version (e.g., `ghcr.io/pilinux/opencode:1.2.5`).
+tagged with the corresponding OpenCode version (e.g., `ghcr.io/pilinux/opencode:1.2.5`) and `latest`.
 
 List of available versions can be found on the [GitHub Container Registry page](https://github.com/pilinux/opencode-docker/pkgs/container/opencode).
 
@@ -74,7 +74,7 @@ For example, to whitelist specific models for the GitHub Copilot provider, you c
 ## Building
 
 The Docker image is built for both `linux/amd64` and `linux/arm64` architectures.
-Images are automatically pushed to GitHub Container Registry (`ghcr.io/pilinux/opencode`) with version tags matching OpenCode releases.
+Images are automatically pushed to GitHub Container Registry (`ghcr.io/pilinux/opencode`) with version tags matching OpenCode releases and a `latest` tag for the most recent release.
 
 ## Contributing
 
