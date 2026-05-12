@@ -8,6 +8,9 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
     outputs:
       needs_update: ${{ steps.compare.outputs.needs_update }}
       version: ${{ steps.release.outputs.version }}
@@ -28,20 +31,36 @@ jobs:
             const version = tag.startsWith('v') ? tag.slice(1) : tag;
             core.setOutput('version', version);
 
-      - name: Get current image versions
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get current image version
         id: current
         run: |
-          TAGS=$(gh api /users/pilinux/packages/container/opencode/versions 2>/dev/null | jq -r 'if type == "array" then .[].metadata.container.tags[] else empty end' | sort -V | tail -1 || echo "")
-          echo "current_version=$TAGS" >> $GITHUB_OUTPUT
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          read_image_version() {
+            docker run --rm "ghcr.io/aaee86/opencode:$1" opencode --version 2>/dev/null \
+              | sed -n 's/^v//; /^[0-9]\+\.[0-9]\+\.[0-9]\+$/p' \
+              | tail -1
+          }
+
+          RELEASE_VERSION="${{ steps.release.outputs.version }}"
+          CURRENT_LATEST_VERSION="$(read_image_version latest)"
+          CURRENT_RELEASE_VERSION="$(read_image_version "$RELEASE_VERSION")"
+
+          echo "current_latest_version=$CURRENT_LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "current_release_version=$CURRENT_RELEASE_VERSION" >> $GITHUB_OUTPUT
 
       - name: Compare versions
         id: compare
         run: |
           RELEASE_VERSION="${{ steps.release.outputs.version }}"
-          CURRENT_VERSION="${{ steps.current.outputs.current_version }}"
-          if [ -z "$CURRENT_VERSION" ] || [ "$(printf '%s\n' "$RELEASE_VERSION" "$CURRENT_VERSION" | sort -V | head -n1)" != "$RELEASE_VERSION" ]; then
+          CURRENT_LATEST_VERSION="${{ steps.current.outputs.current_latest_version }}"
+          CURRENT_RELEASE_VERSION="${{ steps.current.outputs.current_release_version }}"
+          if [ "$CURRENT_LATEST_VERSION" != "$RELEASE_VERSION" ] || [ "$CURRENT_RELEASE_VERSION" != "$RELEASE_VERSION" ]; then
             echo "needs_update=true" >> $GITHUB_OUTPUT
           else
             echo "needs_update=false" >> $GITHUB_OUTPUT
@@ -75,7 +94,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/pilinux/opencode
+          images: ghcr.io/aaee86/opencode
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -93,8 +112,10 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
+          build-args: |
+            OPENCODE_VERSION=${{ needs.check.outputs.version }}
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,name=ghcr.io/pilinux/opencode,push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=ghcr.io/aaee86/opencode,push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
         run: |
@@ -139,10 +160,10 @@ jobs:
         working-directory: /tmp/digests
         run: |
           docker buildx imagetools create \
-            -t ghcr.io/pilinux/opencode:${{ needs.check.outputs.version }} \
-            -t ghcr.io/pilinux/opencode:latest \
-            $(printf 'ghcr.io/pilinux/opencode@sha256:%s ' *)
+            -t ghcr.io/aaee86/opencode:${{ needs.check.outputs.version }} \
+            -t ghcr.io/aaee86/opencode:latest \
+            $(printf 'ghcr.io/aaee86/opencode@sha256:%s ' *)
 
       - name: Inspect image
         run: |
-          docker buildx imagetools inspect ghcr.io/pilinux/opencode:${{ needs.check.outputs.version }}
+          docker buildx imagetools inspect ghcr.io/aaee86/opencode:${{ needs.check.outputs.version }}

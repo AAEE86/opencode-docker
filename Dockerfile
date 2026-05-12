@@ -1,5 +1,7 @@
 FROM node:24.13.1-bookworm
 
+ARG OPENCODE_VERSION=latest
+
 # set working directory
 WORKDIR /app
 
@@ -7,8 +9,13 @@ WORKDIR /app
 RUN uname -m
 
 # install opencode globally
-RUN npm i -g opencode-ai&& \
-  echo "Installed opencode version: $(opencode --version)"
+RUN npm i -g "opencode-ai@${OPENCODE_VERSION}" && \
+  installed_version="$(opencode --version)" && \
+  echo "Installed opencode version: ${installed_version}" && \
+  if [ "${OPENCODE_VERSION}" != "latest" ] && [ "${installed_version}" != "${OPENCODE_VERSION}" ]; then \
+    echo "Expected opencode version ${OPENCODE_VERSION}, got ${installed_version}" >&2; \
+    exit 1; \
+  fi
 
 # non-root user (recommended)
 RUN adduser --disabled-password opencode
