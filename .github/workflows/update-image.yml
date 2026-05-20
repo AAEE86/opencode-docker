@@ -5,6 +5,10 @@ on:
     - cron: '0 */4 * * *'  # Every 4 hours
   workflow_dispatch:  # Allow manual trigger
 
+concurrency:
+  group: update-docker-image
+  cancel-in-progress: false
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -47,23 +51,23 @@ jobs:
               | tail -1
           }
 
-          RELEASE_VERSION="${{ steps.release.outputs.version }}"
-          CURRENT_LATEST_VERSION="$(read_image_version latest)"
-          CURRENT_RELEASE_VERSION="$(read_image_version "$RELEASE_VERSION")"
+          TARGET_VERSION="${{ steps.release.outputs.version }}"
+          PUBLISHED_LATEST_VERSION="$(read_image_version latest)"
+          PUBLISHED_TARGET_VERSION="$(read_image_version "$TARGET_VERSION")"
 
-          echo "current_latest_version=$CURRENT_LATEST_VERSION" >> $GITHUB_OUTPUT
-          echo "current_release_version=$CURRENT_RELEASE_VERSION" >> $GITHUB_OUTPUT
+          echo "published_latest_version=$PUBLISHED_LATEST_VERSION" >> "$GITHUB_OUTPUT"
+          echo "published_target_version=$PUBLISHED_TARGET_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Compare versions
         id: compare
         run: |
-          RELEASE_VERSION="${{ steps.release.outputs.version }}"
-          CURRENT_LATEST_VERSION="${{ steps.current.outputs.current_latest_version }}"
-          CURRENT_RELEASE_VERSION="${{ steps.current.outputs.current_release_version }}"
-          if [ "$CURRENT_LATEST_VERSION" != "$RELEASE_VERSION" ] || [ "$CURRENT_RELEASE_VERSION" != "$RELEASE_VERSION" ]; then
-            echo "needs_update=true" >> $GITHUB_OUTPUT
+          TARGET_VERSION="${{ steps.release.outputs.version }}"
+          PUBLISHED_LATEST_VERSION="${{ steps.current.outputs.published_latest_version }}"
+          PUBLISHED_TARGET_VERSION="${{ steps.current.outputs.published_target_version }}"
+          if [ "$PUBLISHED_LATEST_VERSION" != "$TARGET_VERSION" ] || [ "$PUBLISHED_TARGET_VERSION" != "$TARGET_VERSION" ]; then
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
           else
-            echo "needs_update=false" >> $GITHUB_OUTPUT
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
           fi
 
   build:
@@ -84,8 +88,8 @@ jobs:
         id: prepare
         run: |
           platform=${{ matrix.platform }}
-          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
-          echo "platform_pair=${platform//\//-}" >> $GITHUB_OUTPUT
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
+          echo "platform_pair=${platform//\//-}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout code
         uses: actions/checkout@v6

@@ -10,7 +10,8 @@ RUN uname -m
 
 # install opencode globally
 RUN npm i -g "opencode-ai@${OPENCODE_VERSION}" && \
-  installed_version="$(opencode --version)" && \
+  installed_version_raw="$(opencode --version)" && \
+  installed_version="${installed_version_raw#v}" && \
   echo "Installed opencode version: ${installed_version}" && \
   if [ "${OPENCODE_VERSION}" != "latest" ] && [ "${installed_version}" != "${OPENCODE_VERSION}" ]; then \
     echo "Expected opencode version ${OPENCODE_VERSION}, got ${installed_version}" >&2; \
